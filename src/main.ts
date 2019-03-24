@@ -18,11 +18,15 @@ let screenQuad: ScreenQuad;
 let turtle_drawables;
 let time: number = 0.0;
 
-function loadScene() {
+function regenerate_city(inputs_shader) {
   screenQuad = new ScreenQuad();
   screenQuad.create();
+
+  // generate the input image (height and population)
+
   
   turtle_drawables = generate_scene();
+
   /*
   square = new Square();
   square.create();
@@ -54,6 +58,10 @@ function loadScene() {
    */
 }
 
+function generate_city() {
+
+}
+
 function main() {
   // Initial display for framerate
   const stats = Stats();
@@ -72,23 +80,26 @@ function main() {
   if (!gl) {
     alert('WebGL 2 not supported!');
   }
+  // this is required to render to floating point format textures
+  var ext = gl.getExtension('EXT_color_buffer_float');
+  if (!ext) {
+    alert('EXT_color_buffer_float not supported');
+  }
+
   // `setGL` is a function imported above which sets the value of `gl` in the `globals.ts` module.
   // Later, we can import `gl` from `globals.ts` to access it
   setGL(gl);
 
-  // Initial call to load scene
-  loadScene();
-
   const camera = new Camera(vec3.fromValues(0, 10, -10), vec3.fromValues(0, 0, 0));
   //camera.controls.eye = [10, 10, -10];
 
-  const renderer = new OpenGLRenderer(canvas);
-  renderer.setClearColor(0.2, 0.2, 0.2, 1);
+  const renderer = new OpenGLRenderer(canvas, window.innerWidth, window.innerHeight);
   gl.enable(gl.DEPTH_TEST);
-  /*
-  gl.enable(gl.BLEND);
-  gl.blendFunc(gl.ONE, gl.ONE); // Additive blending
-   */
+
+  const inputMapShader = new ShaderProgram([
+    new Shader(gl.VERTEX_SHADER, require('./shaders/inputs-vert.glsl')),
+    new Shader(gl.FRAGMENT_SHADER, require('./shaders/inputs-frag.glsl')),
+  ]);
 
   const instancedShader = new ShaderProgram([
     new Shader(gl.VERTEX_SHADER, require('./shaders/instanced-vert.glsl')),
@@ -100,16 +111,19 @@ function main() {
     new Shader(gl.FRAGMENT_SHADER, require('./shaders/flat-frag.glsl')),
   ]);
 
+  regenerate_city(inputMapShader);
+
   // This function will be called every frame
   function tick() {
     camera.update();
     stats.begin();
     instancedShader.setTime(time);
-    flat.setTime(time++);
-    gl.viewport(0, 0, window.innerWidth, window.innerHeight);
-    renderer.clear();
-    renderer.render(camera, flat, [screenQuad]);
-    renderer.render(camera, instancedShader, turtle_drawables);
+    flat.setTime(time);
+
+    //renderer.render(camera, flat, [screenQuad]);
+    renderer.renderDrawables(camera, instancedShader, turtle_drawables);
+
+    time++;
     stats.end();
 
     // Tell the browser to call `tick` again whenever it renders a new frame

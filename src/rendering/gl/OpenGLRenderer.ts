@@ -6,23 +6,63 @@ import ShaderProgram from './ShaderProgram';
 
 // In this file, `gl` is accessible because it is imported above
 class OpenGLRenderer {
-  constructor(public canvas: HTMLCanvasElement) {
+  fbo: WebGLFramebuffer;
+  render_texture: WebGLTexture;
+
+  constructor(public canvas: HTMLCanvasElement, w: number, h: number) {
+    // setup buffers for two-stage rendering
+    
+    // NB: the storage is set in setSize
+    this.render_texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.render_texture);
+    this.resizeFBOTexture(w, h);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    // NB: the storage is set in setSize
+    // NB: the depth buffer isn't actually necessary in this case
+    /*
+    this.depth_buffer = gl.createRenderbuffer()
+    gl.bindRenderbuffer(gl.RENDERBUFFER, this.depth_buffer);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, width, height);
+     */
+
+    this.fbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+    //gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, this.depth_buffer);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.render_texture, 0);
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) != gl.FRAMEBUFFER_COMPLETE) {
+      console.error('framebuffer is  not complete')
+    }
   }
 
-  setClearColor(r: number, g: number, b: number, a: number) {
-    gl.clearColor(r, g, b, a);
+  resizeFBOTexture(width: number, height: number) {
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, width, height, 0, gl.RGBA, gl.FLOAT, null);
   }
 
   setSize(width: number, height: number) {
     this.canvas.width = width;
     this.canvas.height = height;
+
+    // resize fbo attachments
+    gl.bindTexture(gl.TEXTURE_2D, this.render_texture);
+    this.resizeFBOTexture(width, height);
   }
 
-  clear() {
+  renderInputMaps(prog: ShaderProgram, square: Drawable) {
+    // render to texture
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+    gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    prog.draw(square)
   }
 
-  render(camera: Camera, prog: ShaderProgram, drawables: Array<Drawable>) {
+  renderDrawables(camera: Camera, prog: ShaderProgram, drawables: Array<Drawable>) {
     let model = mat4.create();
     let viewProj = mat4.create();
     let color = vec4.fromValues(1, 0, 0, 1);
@@ -38,6 +78,15 @@ class OpenGLRenderer {
     prog.setModelMatrix(model);
     prog.setViewProjMatrix(viewProj);
     prog.setCameraAxes(axes);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    // texture unit 0 is active by default
+    prog.setTextureUnit(0);
+    gl.bindTexture(gl.TEXTURE_2D, this.render_texture);
 
     for (let drawable of drawables) {
       prog.draw(drawable);
