@@ -7,21 +7,25 @@ import OpenGLRenderer from './rendering/gl/OpenGLRenderer';
 import Camera from './Camera';
 import {setGL} from './globals';
 import ShaderProgram, {Shader} from './rendering/gl/ShaderProgram';
+import {generate_scene} from './turtle';
 
 // Define an object with application parameters and button callbacks
 // This will be referred to by dat.GUI's functions that add GUI elements.
 const controls = {
 };
 
-let square: Square;
 let screenQuad: ScreenQuad;
+let turtle_drawables;
 let time: number = 0.0;
 
 function loadScene() {
-  square = new Square();
-  square.create();
   screenQuad = new ScreenQuad();
   screenQuad.create();
+  
+  turtle_drawables = generate_scene();
+  /*
+  square = new Square();
+  square.create();
 
   // Set up instanced rendering data arrays here.
   // This example creates a set of positional
@@ -47,6 +51,7 @@ function loadScene() {
   let colors: Float32Array = new Float32Array(colorsArray);
   square.setInstanceVBOs(offsets, colors);
   square.setNumInstances(n * n); // grid of "particles"
+   */
 }
 
 function main() {
@@ -74,12 +79,16 @@ function main() {
   // Initial call to load scene
   loadScene();
 
-  const camera = new Camera(vec3.fromValues(50, 50, 10), vec3.fromValues(50, 50, 0));
+  const camera = new Camera(vec3.fromValues(0, 10, -10), vec3.fromValues(0, 0, 0));
+  //camera.controls.eye = [10, 10, -10];
 
   const renderer = new OpenGLRenderer(canvas);
   renderer.setClearColor(0.2, 0.2, 0.2, 1);
+  gl.enable(gl.DEPTH_TEST);
+  /*
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.ONE, gl.ONE); // Additive blending
+   */
 
   const instancedShader = new ShaderProgram([
     new Shader(gl.VERTEX_SHADER, require('./shaders/instanced-vert.glsl')),
@@ -100,9 +109,7 @@ function main() {
     gl.viewport(0, 0, window.innerWidth, window.innerHeight);
     renderer.clear();
     renderer.render(camera, flat, [screenQuad]);
-    renderer.render(camera, instancedShader, [
-      square,
-    ]);
+    renderer.render(camera, instancedShader, turtle_drawables);
     stats.end();
 
     // Tell the browser to call `tick` again whenever it renders a new frame
