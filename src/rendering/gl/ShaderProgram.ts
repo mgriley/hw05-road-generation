@@ -41,6 +41,8 @@ class ShaderProgram {
   unifDimensions: WebGLUniformLocation;
 
   unifTex: WebGLUniformLocation;
+  unifBoolControls: WebGLUniformLocation;
+  unifFloatControls: WebGLUniformLocation;
 
   constructor(shaders: Array<Shader>) {
     this.prog = gl.createProgram();
@@ -70,6 +72,8 @@ class ShaderProgram {
     this.unifUp   = gl.getUniformLocation(this.prog, "u_Up");
 
     this.unifTex = gl.getUniformLocation(this.prog, "u_tex");
+    this.unifBoolControls = gl.getUniformLocation(this.prog, "u_bin");
+    this.unifFloatControls = gl.getUniformLocation(this.prog, "u_fin");
   }
 
   use() {
@@ -83,6 +87,18 @@ class ShaderProgram {
     this.use();
     if (this.unifTex !== -1) {
         gl.uniform1i(this.unifTex, unit);
+    }
+  }
+
+  setControls(controls: any) {
+    this.use();
+    if (this.unifBoolControls !== -1) {
+      gl.uniform3i(this.unifBoolControls,
+        controls.bool_a, controls.bool_b, controls.bool_c);
+    }
+    if (this.unifFloatControls !== -1) {
+      gl.uniform3f(this.unifFloatControls,
+        controls.float_a, controls.float_b, controls.float_c);
     }
   }
 

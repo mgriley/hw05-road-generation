@@ -12,54 +12,34 @@ import {generate_scene} from './turtle';
 // Define an object with application parameters and button callbacks
 // This will be referred to by dat.GUI's functions that add GUI elements.
 const controls = {
+  bool_a: false,
+  bool_b: false,
+  bool_c: false,
+  float_a: 0.0,
+  float_b: 0.0,
+  float_c: 0.0
 };
 
 let screenQuad: ScreenQuad;
 let turtle_drawables;
 let time: number = 0.0;
 
-function regenerate_city(inputs_shader) {
+function regenerate_city(gl: WebGL2RenderingContext, renderer: OpenGLRenderer, inputs_shader: ShaderProgram) {
   screenQuad = new ScreenQuad();
   screenQuad.create();
 
   // generate the input image (height and population)
+  inputs_shader.setControls(controls);
+  renderer.renderInputMaps(inputs_shader, screenQuad);
 
+  // extract map data from FBO
+  let w = window.innerWidth;
+  let h = window.innerHeight;
+  let map_data = new Float32Array(4 * w * h);
+  gl.readPixels(0, 0, w, h, gl.RGBA, gl.FLOAT, map_data);
+  //console.log(map_data);
   
   turtle_drawables = generate_scene();
-
-  /*
-  square = new Square();
-  square.create();
-
-  // Set up instanced rendering data arrays here.
-  // This example creates a set of positional
-  // offsets and gradiated colors for a 100x100 grid
-  // of squares, even though the VBO data for just
-  // one square is actually passed to the GPU
-  let offsetsArray = [];
-  let colorsArray = [];
-  let n: number = 100.0;
-  for(let i = 0; i < n; i++) {
-    for(let j = 0; j < n; j++) {
-      offsetsArray.push(i);
-      offsetsArray.push(j);
-      offsetsArray.push(0);
-
-      colorsArray.push(i / n);
-      colorsArray.push(j / n);
-      colorsArray.push(1.0);
-      colorsArray.push(1.0); // Alpha channel
-    }
-  }
-  let offsets: Float32Array = new Float32Array(offsetsArray);
-  let colors: Float32Array = new Float32Array(colorsArray);
-  square.setInstanceVBOs(offsets, colors);
-  square.setNumInstances(n * n); // grid of "particles"
-   */
-}
-
-function generate_city() {
-
 }
 
 function main() {
@@ -73,6 +53,12 @@ function main() {
 
   // Add controls to the gui
   const gui = new DAT.GUI();
+  gui.add(controls, 'bool_a');
+  gui.add(controls, 'bool_b');
+  gui.add(controls, 'bool_c');
+  gui.add(controls, 'float_a', 0, 1);
+  gui.add(controls, 'float_b', 0, 1);
+  gui.add(controls, 'float_c', 0, 1);
 
   // get canvas and webgl context
   const canvas = <HTMLCanvasElement> document.getElementById('canvas');
@@ -101,27 +87,30 @@ function main() {
     new Shader(gl.FRAGMENT_SHADER, require('./shaders/inputs-frag.glsl')),
   ]);
 
+  const terrainShader = new ShaderProgram([
+    new Shader(gl.VERTEX_SHADER, require('./shaders/terrain-vert.glsl')),
+    new Shader(gl.FRAGMENT_SHADER, require('./shaders/terrain-frag.glsl')),
+  ]);
+
   const instancedShader = new ShaderProgram([
     new Shader(gl.VERTEX_SHADER, require('./shaders/instanced-vert.glsl')),
     new Shader(gl.FRAGMENT_SHADER, require('./shaders/instanced-frag.glsl')),
   ]);
 
-  const flat = new ShaderProgram([
-    new Shader(gl.VERTEX_SHADER, require('./shaders/flat-vert.glsl')),
-    new Shader(gl.FRAGMENT_SHADER, require('./shaders/flat-frag.glsl')),
-  ]);
-
-  regenerate_city(inputMapShader);
+  regenerate_city(gl, renderer, inputMapShader);
 
   // This function will be called every frame
   function tick() {
     camera.update();
     stats.begin();
     instancedShader.setTime(time);
-    flat.setTime(time);
+    inputMapShader.setControls(controls);
+    terrainShader.setControls(controls);
+    instancedShader.setControls(controls);
 
-    //renderer.render(camera, flat, [screenQuad]);
-    renderer.renderDrawables(camera, instancedShader, turtle_drawables);
+    renderer.renderDrawables(
+      camera, instancedShader, turtle_drawables,
+      terrainShader, screenQuad, inputMapShader);
 
     time++;
     stats.end();
@@ -134,13 +123,11 @@ function main() {
     renderer.setSize(window.innerWidth, window.innerHeight);
     camera.setAspectRatio(window.innerWidth / window.innerHeight);
     camera.updateProjectionMatrix();
-    flat.setDimensions(window.innerWidth, window.innerHeight);
   }, false);
 
   renderer.setSize(window.innerWidth, window.innerHeight);
   camera.setAspectRatio(window.innerWidth / window.innerHeight);
   camera.updateProjectionMatrix();
-  flat.setDimensions(window.innerWidth, window.innerHeight);
 
   // Start the render loop
   tick();

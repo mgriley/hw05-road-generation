@@ -1,6 +1,9 @@
 #version 300 es
 precision highp float;
 
+uniform bvec3 u_bin;
+uniform vec3 u_fin;
+
 in vec4 fs_Col;
 in vec4 fs_Pos;
 in vec3 fs_Nor;

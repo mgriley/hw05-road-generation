@@ -58,11 +58,19 @@ class OpenGLRenderer {
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
     prog.draw(square)
   }
 
-  renderDrawables(camera: Camera, prog: ShaderProgram, drawables: Array<Drawable>) {
+  renderDrawables(camera: Camera,
+    prog: ShaderProgram, drawables: Array<Drawable>,
+    terrain_prog: ShaderProgram, screen_quad: Drawable,
+    inputs_prog: ShaderProgram
+  ) {
+    // this generates the data that will immediately be read by the
+    // terrain shader. Note that it must be called here (rather than
+    // once before all rendering) b/c webgl will clear the FBO automatically
+    this.renderInputMaps(inputs_prog, screen_quad);
+
     let model = mat4.create();
     let viewProj = mat4.create();
     let color = vec4.fromValues(1, 0, 0, 1);
@@ -84,9 +92,11 @@ class OpenGLRenderer {
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-    // texture unit 0 is active by default
-    prog.setTextureUnit(0);
+    // Note: texture unit 0 is active by default
+    terrain_prog.setTextureUnit(0);
     gl.bindTexture(gl.TEXTURE_2D, this.render_texture);
+
+    terrain_prog.draw(screen_quad);
 
     for (let drawable of drawables) {
       prog.draw(drawable);
@@ -95,3 +105,4 @@ class OpenGLRenderer {
 };
 
 export default OpenGLRenderer;
+
