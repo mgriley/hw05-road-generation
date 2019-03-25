@@ -51,5 +51,7 @@ void main()
     fs_Col = vs_Col;
     fs_Pos = pos;
     fs_Nor = normalize(nor.xyz);
-    gl_Position = u_ViewProj * pos;
+    // TODO - just extract the required components, no need for viewproj
+    //gl_Position = u_ViewProj * pos;
+    gl_Position = pos;
 }

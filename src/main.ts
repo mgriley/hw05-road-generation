@@ -24,7 +24,7 @@ let screenQuad: ScreenQuad;
 let turtle_drawables;
 let time: number = 0.0;
 
-function regenerate_city(gl: WebGL2RenderingContext, renderer: OpenGLRenderer, inputs_shader: ShaderProgram) {
+function regenerate_city(gl: WebGL2RenderingContext, canvas, renderer: OpenGLRenderer, inputs_shader: ShaderProgram) {
   screenQuad = new ScreenQuad();
   screenQuad.create();
 
@@ -38,8 +38,19 @@ function regenerate_city(gl: WebGL2RenderingContext, renderer: OpenGLRenderer, i
   let map_data = new Float32Array(4 * w * h);
   gl.readPixels(0, 0, w, h, gl.RGBA, gl.FLOAT, map_data);
   //console.log(map_data);
+
+  // returns [land_height, pop_den]
+  function map_sampler(x, y) {
+    // assume x and y are in [-1,1]
+    let abs_x = Math.floor(w * 0.5*(x+1));
+    let abs_y = Math.floor(h * 0.5*(y+1));
+    let pt_index = 4 * (abs_y * w + abs_x);
+    let land_h = map_data[pt_index];
+    let pop_den = map_data[pt_index + 1];
+    return [land_h, pop_den];
+  }
   
-  turtle_drawables = generate_scene();
+  turtle_drawables = generate_scene(map_sampler);
 }
 
 function main() {
@@ -97,7 +108,7 @@ function main() {
     new Shader(gl.FRAGMENT_SHADER, require('./shaders/instanced-frag.glsl')),
   ]);
 
-  regenerate_city(gl, renderer, inputMapShader);
+  regenerate_city(gl, canvas, renderer, inputMapShader);
 
   // This function will be called every frame
   function tick() {
@@ -108,8 +119,9 @@ function main() {
     terrainShader.setControls(controls);
     instancedShader.setControls(controls);
 
+    let output_drawables = controls.bool_a ? [] : turtle_drawables;
     renderer.renderDrawables(
-      camera, instancedShader, turtle_drawables,
+      camera, instancedShader, output_drawables,
       terrainShader, screenQuad, inputMapShader);
 
     time++;

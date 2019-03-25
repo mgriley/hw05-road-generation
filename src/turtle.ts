@@ -1,6 +1,18 @@
-import {vec3,vec4} from 'gl-matrix';
+import {vec2, vec3,vec4} from 'gl-matrix';
 import {setGL} from './globals';
 import {Blob, generate_mesh} from './geometry/Blob';
+
+function v2(x, y) {
+  return vec2.fromValues(x, y);
+}
+
+function v2e() {
+  return v2(0,0);
+}
+
+function v2c(other) {
+  return vec2.copy(v2e(), other);
+}
 
 function v3(x, y, z) {
   return vec3.fromValues(x, y, z);
@@ -14,90 +26,10 @@ function v4(x, y, z, w) {
   return vec4.fromValues(x, y, z, w);
 }
 
-function gen_sphere(x, y): any  {
-  let v_angle = y * Math.PI;    
-  let h_angle = x * 2.0 * Math.PI;
-  let pos = v3(
-    Math.sin(v_angle) * Math.cos(h_angle),
-    Math.sin(v_angle) * Math.sin(h_angle),
-    Math.cos(v_angle));
-  let nor = vec3.clone(pos);
-  return [pos, nor];
-}
-
-function gen_torus(nx, ny): any {
-  let theta = nx * 2 * Math.PI;
-  let phi = ny * 2 * Math.PI;
-  let ring_pos = v3(Math.cos(theta), 0, Math.sin(theta));
-  let inner_r = 0.2;
-  let pos = vec3.add(v3e(),
-    vec3.scale(v3e(), vec3.negate(v3e(), ring_pos), inner_r*Math.cos(phi)),
-    vec3.scale(v3e(), v3(0,1,0), inner_r*Math.sin(phi)));
-  vec3.add(pos, pos, ring_pos);
-  let nor = vec3.subtract(v3e(), pos, ring_pos);
-  return [pos, nor];
-}
-
-function gen_ground(x, y): any {
-  let pos = v3(
-    (x - 0.5) * 20.0,
-    0,
-    (y - 0.5) * 20.0
-  );
+function gen_rect(x, y): any {
+  let pos = v3(x, y, 0);
   let nor = v3(0,1,0);
   return [pos, nor];
-}
-
-function create_ground() {
-  let res = generate_mesh(2, 2, gen_ground);
-  let seg = new Blob(res[0],res[1],res[2]);
-  seg.create();
-
-  let offsets = new Float32Array([
-    0,0,0,
-  ]);
-  let rotations = new Float32Array([
-    1,0,0,0,
-  ]);
-  let scales = new Float32Array([
-    1,1,1,
-  ]);
-  let colors = new Float32Array([
-    0.5,0.1,0,1,
-  ]);
-  seg.setInstanceVBOs(offsets, rotations, scales, colors);
-  seg.setNumInstances(1);
-  return seg;
-}
-
-function create_seg() {
-  let sphere_res = generate_mesh(10, 10, gen_sphere);
-  let seg = new Blob(sphere_res[0], sphere_res[1], sphere_res[2]);
-  seg.create();
-
-  let offsets = new Float32Array([
-    0,0,0,
-    4,0,0,
-    0,0,6
-  ]);
-  let rotations = new Float32Array([
-    1,0,0,0,
-    1,0,0,0,
-    0,1,0,Math.PI/4
-  ]);
-  let scales = new Float32Array([
-    1,1,1,
-    2,2,2,
-    6,1,1
-  ]);
-  let colors = new Float32Array([
-    1,0,0,1,
-    0,1,0,1,
-    0,0,1,1
-  ]);
-  seg.setInstanceVBOs(offsets, rotations, scales, colors);
-  seg.setNumInstances(3);
-  return seg;
 }
 
 function create_turtle() {
@@ -172,109 +104,177 @@ function draw_instance(instance_data, turtle) {
   add_instance(instance_data, pos, rot, scale, color);
 }
 
-function run_system() {
-  let gen_str = 'b';
-  let num_iterations = 10;
 
-  let expansion_rules = {
-    'b': create_rule([function() {
-      return 'dtsb'
-    }], [1]),
-  };
-  let draw_rules = {
-    '[': det_rule(function(state) {
-      state.turtle_stack.push(copy_turtle(state.turtle));  
-    }),
-    ']': det_rule(function(state) {
-      state.turtle = state.turtle_stack.pop();
-    }),
-    't': det_rule(function(state) {
-      vec3.add(state.turtle.position, state.turtle.position, v3(0,2,0));
-    }),
-    's': det_rule(function(state) {
-      vec3.scale(state.turtle.scale, state.turtle.scale, 1.2);
-    }),
-    'd': create_rule([function(state) {
-      draw_instance(
-        state.instances.segments, state.turtle);
-    }], [1]),
-  };
-  
-  let instances = {
-    segments: {
-      positions: [],
-      rotations: [],
-      scales: [],
-      colors: []
-    },
-    leaves: {
-      positions: [],
-      rotations: [],
-      scales: [],
-      colors: []
-    }
-  };
-  let draw_state = {
-    turtle: create_turtle(),
-    turtle_stack: [],
-    instances: instances
-  };
+function run_system(map_sampler) {
 
-  // generate the string
-  for (let i = 0; i < num_iterations; ++i) {
-    console.log(i + ': ' + gen_str);
-    let next_str = '';
-    for (let j = 0; j < gen_str.length; ++j) {
-      let cur_char = gen_str[j];
-      let exp_rule = expansion_rules[cur_char];
-      if (exp_rule) {
-        let exp_func = select_func(exp_rule);
-        next_str += exp_func();
-      } else {
-        next_str += cur_char;
+  let highways = [];
+  let streets = [];
+
+  let seed_road = [v2(0,0), v2(0.2,0.2)];
+  let queue = [seed_road];
+  let num_iterations = 100;
+  for (let i = 0; i < num_iterations && queue.length > 0; ++i) {
+    // TODO - will be slow if large queue
+    let road = queue.shift();
+    let start_pos = road[0];
+    let end_pos = road[1];
+    let delta = vec2.subtract(v2e(), end_pos, start_pos);
+    let len = vec2.distance(end_pos, start_pos);
+
+    highways.push(road);
+    
+    // try new roads:
+    // TODO - sampling is misaligned with the texture
+    /*
+    let cur_sample = map_sampler(end_pos[0], end_pos[1]);
+    let cur_land_h = cur_sample[0];
+    let cur_pop_den = cur_sample[1];
+     */
+
+    let num_attempts = 3 * Math.random() + 1;
+    for (let j = 0; j < num_attempts; ++j) {
+      
+      // the higher the population, the more ragged the highways
+      let angle_offset = /*cur_pop_den * */0.4 * Math.PI * 2.0 * (Math.random() - 0.5); 
+      let current_angle = Math.atan2(delta[0], delta[1]);
+      let new_angle = current_angle + angle_offset;
+      let new_len = 0.3 * Math.random();
+      let next_pos = vec2.add(v2e(), end_pos,
+        vec2.scale(v2e(),
+          v2(Math.cos(new_angle), Math.sin(new_angle)), new_len));
+      
+      /*
+      let next_sample = map_sampler(next_pos[0], next_pos[1]);
+      let next_land_h = next_sample[0];
+      if (next_land_h < 0.4) {
+        // in the water, skip
+        continue;
       }
-    }
-    gen_str = next_str;
-  }
-  console.log('final: ' + gen_str);
+       */
 
-  // use the string to generate the object instances
-  for (let i = 0; i < gen_str.length; ++i) {
-    let draw_rule = draw_rules[gen_str[i]];
-    if (draw_rule) {
-      let draw_func = select_func(draw_rule);
-      draw_func(draw_state);
+      let new_road = [v2c(end_pos), next_pos];
+      queue.push(new_road);
     }
+    /*
+    let old_offset = vec2.subtract(v2e(), end_pos, start_pos);
+    let new_road = [vec2.copy(v2e(), end_pos), vec2.add(v2e(), end_pos, old_offset)];
+    queue.push(new_road);
+     */
   }
 
-  // extract the drawables from the draw state
+  let roads = {
+    positions: [],
+    rotations: [],
+    scales: [],
+    colors: []
+  };
+  // for debug
+  /*
+  let seed_start = seed_road[0];
+  let seed_end = seed_road[1];
+  roads.positions.push([seed_start[0], seed_start[1], 0]);
+  roads.rotations.push([1,0,0,0]);
+  roads.scales.push([0.1,0.1,0.1]);
+  roads.colors.push([1.0,0.0,0.0]);
+  roads.positions.push([seed_end[0], seed_end[1], 0]);
+  roads.rotations.push([1,0,0,0]);
+  roads.scales.push([0.1,0.1,0.1]);
+  roads.colors.push([1.0,0.0,0.0]);
+   */
 
-  let sphere_res = generate_mesh(40, 40, gen_torus);
-  let seg = new Blob(sphere_res[0], sphere_res[1], sphere_res[2]);
-  seg.create();
-  setup_instances(seg, instances.segments);
+  for (let i = 0; i < highways.length; ++i) {
+    let highway = highways[i];
+    let start_pos = highway[0];
+    let end_pos = highway[1];
+    let delta = vec2.subtract(v2e(), end_pos, start_pos);
+    let len = vec2.distance(end_pos, start_pos);
+    let angle = Math.atan2(delta[0], delta[1]);
 
-  let leaf_res = generate_mesh(4, 4, gen_sphere);
-  let leaf = new Blob(leaf_res[0], leaf_res[1], leaf_res[2]);
-  leaf.create();
-  setup_instances(leaf, instances.leaves);
+    roads.positions.push([start_pos[0], start_pos[1], 0]);
+    roads.rotations.push([0,0,1,angle]);
+    roads.scales.push([len,0.005,0.005]);
+    roads.colors.push([0,0,0]);
+  }
+  // TODO - streets, too
 
-  let drawables = [seg, leaf];
+  let road_res = generate_mesh(2, 2, gen_rect);
+  let road_drawable = new Blob(road_res[0], road_res[1], road_res[2]);
+  road_drawable.create();
+  setup_instances(road_drawable, roads);
+
+  let drawables = [road_drawable];
 
   return drawables;
 }
 
 // returns a list of drawables to render with the instanced shader
-export function generate_scene() {
+export function generate_scene(map_sampler) {
   let drawables = [];
 
-  let ground = create_ground();
-  let seg = create_seg();  
-  let gen_drawables = run_system();
+  let gen_drawables = run_system(map_sampler);
 
-  drawables.push(ground);
-  //drawables.push(seg);
   drawables.push(...gen_drawables);
 
   return drawables;
 }
+
+// TODO - remove
+/*
+function gen_sphere(x, y): any  {
+  let v_angle = y * Math.PI;    
+  let h_angle = x * 2.0 * Math.PI;
+  let pos = v3(
+    Math.sin(v_angle) * Math.cos(h_angle),
+    Math.sin(v_angle) * Math.sin(h_angle),
+    Math.cos(v_angle));
+  let nor = vec3.clone(pos);
+  return [pos, nor];
+}
+
+function gen_torus(nx, ny): any {
+  let theta = nx * 2 * Math.PI;
+  let phi = ny * 2 * Math.PI;
+  let ring_pos = v3(Math.cos(theta), 0, Math.sin(theta));
+  let inner_r = 0.2;
+  let pos = vec3.add(v3e(),
+    vec3.scale(v3e(), vec3.negate(v3e(), ring_pos), inner_r*Math.cos(phi)),
+    vec3.scale(v3e(), v3(0,1,0), inner_r*Math.sin(phi)));
+  vec3.add(pos, pos, ring_pos);
+  let nor = vec3.subtract(v3e(), pos, ring_pos);
+  return [pos, nor];
+}
+
+function gen_ground(x, y): any {
+  let pos = v3(
+    (x - 0.5) * 20.0,
+    0,
+    (y - 0.5) * 20.0
+  );
+  let nor = v3(0,1,0);
+  return [pos, nor];
+}
+
+function create_ground() {
+  let res = generate_mesh(2, 2, gen_ground);
+  let seg = new Blob(res[0],res[1],res[2]);
+  seg.create();
+
+  let offsets = new Float32Array([
+    0,0,0,
+  ]);
+  let rotations = new Float32Array([
+    1,0,0,0,
+  ]);
+  let scales = new Float32Array([
+    1,1,1,
+  ]);
+  let colors = new Float32Array([
+    0.5,0.1,0,1,
+  ]);
+  seg.setInstanceVBOs(offsets, rotations, scales, colors);
+  seg.setNumInstances(1);
+  return seg;
+}
+*/
+
+
